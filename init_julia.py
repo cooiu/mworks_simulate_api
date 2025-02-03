@@ -17,6 +17,7 @@ def init_julia_env():
     
     packages = [
         "PyCall",
+        "TyBase",
         "TyPlot",
         "TyMath",
         "Printf",

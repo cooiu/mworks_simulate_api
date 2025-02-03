@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 from config import Config
+import base64
 
 class SyslabExecutor:
     @staticmethod
@@ -18,10 +19,8 @@ class SyslabExecutor:
             
             # 添加必要的包导入和初始化代码
             full_code = """
-            # 设置 Python 环境
-            ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
-            
             # 设置环境变量
+            ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
             ENV["SYSLAB_HOME"] = "D:/tools/MWorks/Syslab 2024b"
             ENV["TYMLANG_CONFIG_DIR"] = "C:/Users/Public/TongYuan/syslab-mlang"
             ENV["TYMLANG_INSTALL_DIR"] = "D:/tools/MWorks/Syslab 2024b/Tools/TyMLangDist"
@@ -29,9 +28,14 @@ class SyslabExecutor:
             println("Current directory: ", pwd())
             println("Loading packages...")
             
-            # 导入必要的包
+            # 导入必要的包（这些包应该已经由 init_julia.py 安装）
             using TyBase
             using TyPlot
+            using TyMath
+            using Printf
+            using Statistics
+            using LinearAlgebra
+            using DelimitedFiles
             
             # 设置工作目录
             cd("{}")
@@ -77,7 +81,9 @@ class SyslabExecutor:
             logging.info(f"Executing command: {' '.join(cmd)}")
             logging.info(f"Working directory: {Config.TEMP_DIR}")
             
-            # 执行命令
+            logging.info("Starting code execution...")
+            logging.info(f"Code to execute:\n{code}")
+            
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -89,45 +95,51 @@ class SyslabExecutor:
                 cwd=Config.TEMP_DIR
             )
             
-            try:
-                stdout, stderr = process.communicate(timeout=Config.EXEC_TIMEOUT)
-                
-                # 记录输出
-                logging.info(f"stdout: {stdout}")
-                if stderr:
-                    logging.error(f"stderr: {stderr}")
-                
-                if process.returncode == 0:
-                    # 检查图片是否生成
-                    png_file = os.path.join(Config.TEMP_DIR, "test.png")
-                    if os.path.exists(png_file):
-                        logging.info(f"Plot generated: {png_file}")
-                    
-                    return {
-                        "status": "success",
-                        "output": stdout,
-                        "error": None
-                    }
-                else:
-                    error_msg = stderr or stdout or "Unknown error occurred"
-                    return {
-                        "status": "error",
-                        "output": None,
-                        "error": error_msg
-                    }
-                    
-            except subprocess.TimeoutExpired:
-                process.kill()
-                return {
-                    "status": "error",
-                    "output": None,
-                    "error": "Execution timeout"
-                }
+            stdout, stderr = process.communicate(timeout=Config.EXEC_TIMEOUT)
+            
+            logging.info(f"Execution completed with return code: {process.returncode}")
+            logging.info(f"stdout:\n{stdout}")
+            if stderr:
+                logging.error(f"stderr:\n{stderr}")
+            
+            # 创建标准格式的返回结果
+            results = {
+                'images': [],
+                'text': [],
+                'error': None
+            }
+            
+            # 处理标准输出
+            if stdout:
+                results['text'].append(stdout.strip())
+            
+            # 处理错误输出
+            if stderr:
+                results['error'] = stderr.strip()
+            
+            # 处理图片文件
+            fig_file = os.path.join(Config.TEMP_DIR, 'trig_functions.syslabfig')
+            if os.path.exists(fig_file):
+                with open(fig_file, 'rb') as f:
+                    img_data = f.read()
+                    img_base64 = base64.b64encode(img_data).decode('utf-8')
+                    results['images'].append({
+                        'id': len(results['images']),
+                        'data': f'data:image/png;base64,{img_base64}'
+                    })
+                # 删除临时图片文件
+                os.remove(fig_file)
+            
+            return results
                 
         except Exception as e:
             logging.error(f"Error executing code: {str(e)}")
             return {
-                "status": "error",
-                "output": None,
-                "error": str(e)
+                'images': [],
+                'text': [],
+                'error': str(e)
             }
+        finally:
+            # 清理临时文件
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
