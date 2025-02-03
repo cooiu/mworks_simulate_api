@@ -12,14 +12,38 @@ def init_julia_env():
     
     using Pkg
     
-    # 添加包
-    println("Installing PyCall...")
-    Pkg.add("PyCall")
+    # 添加必要的包
+    println("Installing packages...")
+    
+    packages = [
+        "PyCall",
+        "TyPlot",
+        "TyMath",
+        "Printf",
+        "Statistics",
+        "LinearAlgebra",
+        "DelimitedFiles"
+    ]
+
+    for pkg in packages
+        println("Installing $pkg...")
+        Pkg.add(pkg)
+    end
     
     println("Building PyCall...")
     Pkg.build("PyCall")
     
-    println("Installation completed!")
+    # 测试导入
+    println("\\nTesting imports...")
+    using PyCall
+    using TyPlot
+    using TyMath
+    using Printf
+    using Statistics
+    using LinearAlgebra
+    using DelimitedFiles
+    
+    println("\\nInstallation completed!")
     """
     
     # 保存到临时文件
