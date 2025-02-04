@@ -2,17 +2,114 @@ import subprocess
 import os
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 from config import Config
 import base64
+import re
 
 class SyslabExecutor:
+    @staticmethod
+    def check_required_packages(code: str) -> List[str]:
+        """检查代码中需要的额外包"""
+        packages = []
+        
+        # 使用正则表达式匹配 import 和 using 语句
+        import_pattern = r'(?:import|using)\s+([A-Za-z][A-Za-z0-9_]*)'
+        matches = re.finditer(import_pattern, code)
+        
+        for match in matches:
+            pkg_name = match.group(1)
+            # 排除已在初始化时安装的基础包
+            if pkg_name not in ["TyBase", "TyPlot", "TyMath", "PyCall"]:
+                packages.append(pkg_name)
+        
+        return list(set(packages))  # 去重
+
+    @staticmethod
+    def ensure_packages(packages: List[str], env: dict) -> Tuple[bool, str]:
+        """确保包已安装"""
+        if not packages:  # 如果没有额外的包需要安装
+            return True, "No additional packages needed"
+            
+        try:
+            # 构建安装代码
+            install_code = """
+            using Pkg
+            
+            function ensure_package(pkg)
+                if Base.find_package(pkg) === nothing
+                    println("Installing $pkg...")
+                    Pkg.add(pkg)
+                    println("$pkg installed successfully!")
+                else
+                    println("$pkg is already installed")
+                end
+            end
+            
+            for pkg in ["{}"]
+                try
+                    ensure_package(pkg)
+                catch e
+                    println("Error installing $pkg: $e")
+                    exit(1)
+                end
+            end
+            """.format('","'.join(packages))
+            
+            process = subprocess.Popen(
+                [Config.JULIA_PATH, "-e", install_code],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8'
+            )
+            stdout, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                return False, f"包安装失败: {stderr or stdout}"
+            return True, stdout
+        except Exception as e:
+            return False, f"包安装过程出错: {str(e)}"
+
     @staticmethod
     def execute_code(code: str) -> Dict[str, Any]:
         """执行 Julia 代码并返回结果"""
         try:
             # 确保临时目录存在
             os.makedirs(Config.TEMP_DIR, exist_ok=True)
+            
+            # 检查需要的额外包
+            required_packages = SyslabExecutor.check_required_packages(code)
+            if required_packages:
+                logging.info(f"Additional packages required: {required_packages}")
+            
+            # 设置环境变量
+            env = os.environ.copy()
+            env.update({
+                "PYTHON": "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe",
+                "JULIA_DEPOT_PATH": "C:/Users/Public/TongYuan/.julia",
+                "SYSLAB_HOME": "D:/tools/MWorks/Syslab 2024b",
+                "TYMLANG_CONFIG_DIR": "C:/Users/Public/TongYuan/syslab-mlang",
+                "TYMLANG_INSTALL_DIR": "D:/tools/MWorks/Syslab 2024b/Tools/TyMLangDist",
+                "PATH": (
+                    "C:/Users/Public/TongYuan/.julia/miniforge3;"
+                    "C:/Users/Public/TongYuan/.julia/miniforge3/Scripts;"
+                    f"{os.environ['PATH']};"
+                    "D:/tools/MWorks/Syslab 2024b/Bin"
+                )
+            })
+            
+            # 如果有额外的包，确保它们已安装
+            if required_packages:
+                success, message = SyslabExecutor.ensure_packages(required_packages, env)
+                if not success:
+                    return {
+                        'images': [],
+                        'text': [],
+                        'error': message
+                    }
+                logging.info("Additional packages installation successful")
             
             # 创建临时文件存储代码
             temp_file = Path(Config.TEMP_DIR) / "temp_code.jl"
@@ -28,14 +125,13 @@ class SyslabExecutor:
             println("Current directory: ", pwd())
             println("Loading packages...")
             
-            # 导入必要的包（这些包应该已经由 init_julia.py 安装）
+            # 导入基础包
             using TyBase
             using TyPlot
             using TyMath
-            using Printf
-            using Statistics
-            using LinearAlgebra
-            using DelimitedFiles
+            
+            # 导入额外需要的包
+            {}
             
             # 设置工作目录
             cd("{}")
@@ -49,7 +145,11 @@ class SyslabExecutor:
             
             println("-" ^ 40)
             println("Execution completed!")
-            """.format(Config.TEMP_DIR.replace("\\", "/"), code)
+            """.format(
+                '\n'.join(f"using {pkg}" for pkg in required_packages),
+                Config.TEMP_DIR.replace("\\", "/"),
+                code
+            )
             
             # 保存代码到临时文件
             with open(temp_file, "w", encoding="utf-8") as f:
@@ -95,42 +195,48 @@ class SyslabExecutor:
                 cwd=Config.TEMP_DIR
             )
             
-            stdout, stderr = process.communicate(timeout=Config.EXEC_TIMEOUT)
-            
-            logging.info(f"Execution completed with return code: {process.returncode}")
-            logging.info(f"stdout:\n{stdout}")
-            if stderr:
-                logging.error(f"stderr:\n{stderr}")
-            
-            # 创建标准格式的返回结果
-            results = {
-                'images': [],
-                'text': [],
-                'error': None
-            }
-            
-            # 处理标准输出
-            if stdout:
-                results['text'].append(stdout.strip())
-            
-            # 处理错误输出
-            if stderr:
-                results['error'] = stderr.strip()
-            
-            # 处理图片文件
-            fig_file = os.path.join(Config.TEMP_DIR, 'trig_functions.syslabfig')
-            if os.path.exists(fig_file):
-                with open(fig_file, 'rb') as f:
-                    img_data = f.read()
-                    img_base64 = base64.b64encode(img_data).decode('utf-8')
-                    results['images'].append({
-                        'id': len(results['images']),
-                        'data': f'data:image/png;base64,{img_base64}'
-                    })
-                # 删除临时图片文件
-                os.remove(fig_file)
-            
-            return results
+            try:
+                stdout, stderr = process.communicate(timeout=Config.EXEC_TIMEOUT)
+                
+                # 创建标准格式的返回结果
+                results = {
+                    'images': [],
+                    'text': [],
+                    'error': None
+                }
+                
+                # 处理标准输出
+                if stdout:
+                    results['text'].append(stdout.strip())
+                
+                # 处理错误输出
+                if stderr:
+                    results['error'] = stderr.strip()
+                
+                # 处理图片文件
+                fig_files = [f for f in os.listdir(Config.TEMP_DIR) if f.endswith('.syslabfig')]
+                for fig_file in fig_files:
+                    fig_path = os.path.join(Config.TEMP_DIR, fig_file)
+                    if os.path.exists(fig_path):
+                        with open(fig_path, 'rb') as f:
+                            img_data = f.read()
+                            img_base64 = base64.b64encode(img_data).decode('utf-8')
+                            results['images'].append({
+                                'id': len(results['images']),
+                                'data': f'data:image/png;base64,{img_base64}'
+                            })
+                        # 删除临时图片文件
+                        os.remove(fig_path)
+                
+                return results
+                    
+            except subprocess.TimeoutExpired:
+                process.kill()
+                return {
+                    'images': [],
+                    'text': [],
+                    'error': "执行超时"
+                }
                 
         except Exception as e:
             logging.error(f"Error executing code: {str(e)}")

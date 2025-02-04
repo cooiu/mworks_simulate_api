@@ -16,22 +16,13 @@ println("数据已生成")
 
 # 创建新图形
 using TyPlot
-figure()
+using TyDSPSystem
 
-# 绘制多条曲线
-plot(x, y1, "b-", label="sin(x)")
-plot(x, y2, "r--", label="cos(x)")
-
-# 添加网格
-grid("on")
-
-# 添加标签
-xlabel("x")
-ylabel("y")
-
-# 保存图形
-savefig("trig_functions.syslabfig")
-println("图形已保存")
+sine1 = dsp_SineWave(Amplitude=2,Frequency=10,SamplesPerFrame=1000)
+y1 = step(sine1)
+plot(y1)
+hold()
+println("生成图形")
 
 # 计算一些统计值
 println("\\n统计信息:")
