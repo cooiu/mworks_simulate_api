@@ -122,7 +122,7 @@ class SyslabExecutor:
 
             # 执行用户代码:
             println("Executing user code:")
-            println("-" * 40)
+            println("-"^40)
             
             {}
 
@@ -132,7 +132,7 @@ class SyslabExecutor:
                 println("图形已保存")
             end
 
-            println("-" * 40)
+            println("-"^40)
             println("Execution completed!")
             """.format(code)
             
