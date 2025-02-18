@@ -4,8 +4,8 @@ from config import Config
 import concurrent.futures
 import logging
 
+"""安装单个Julia包"""
 def install_package(pkg: str, env: dict) -> tuple:
-    """安装单个Julia包"""
     try:
         cmd = f"""
         using Pkg
@@ -28,8 +28,8 @@ def install_package(pkg: str, env: dict) -> tuple:
     except Exception as e:
         return (pkg, False, "", str(e))
 
+"""初始化 Julia 环境，并行安装必要的包"""
 def init_julia_env():
-    """初始化 Julia 环境，并行安装必要的包"""
     print("开始初始化 Julia 环境...")
     
     # 设置环境变量

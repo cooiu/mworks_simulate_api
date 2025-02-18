@@ -6,7 +6,7 @@ import os
 def test_api():
     url = "http://localhost:5000/execute"
     
-    # 测试代码 - 注意这里使用三引号时不要有缩进
+    # 测试代码修改
     code = """# 生成测试数据
 x = collect(0:0.1:2π)
 y1 = sin.(x)
@@ -21,7 +21,9 @@ using TyDSPSystem
 sine1 = dsp_SineWave(Amplitude=2,Frequency=10,SamplesPerFrame=1000)
 y1 = step(sine1)
 plot(y1)
-hold()
+title("正弦波信号")
+xlabel("采样点")
+ylabel("幅值")
 println("生成图形")
 
 # 计算一些统计值
@@ -29,7 +31,8 @@ println("\\n统计信息:")
 println("sin(x) 最大值: ", maximum(y1))
 println("sin(x) 最小值: ", minimum(y1))
 println("cos(x) 最大值: ", maximum(y2))
-println("cos(x) 最小值: ", minimum(y2))"""
+println("cos(x) 最小值: ", minimum(y2))
+"""
     
     try:
         print("发送请求...")

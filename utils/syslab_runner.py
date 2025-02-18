@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Tuple
 from config import Config
 import base64
 import re
+import time
 
 class SyslabExecutor:
     @staticmethod
@@ -116,40 +117,24 @@ class SyslabExecutor:
             
             # 添加必要的包导入和初始化代码
             full_code = """
-            # 设置环境变量
-            ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
-            ENV["SYSLAB_HOME"] = "D:/tools/MWorks/Syslab 2024b"
-            ENV["TYMLANG_CONFIG_DIR"] = "C:/Users/Public/TongYuan/syslab-mlang"
-            ENV["TYMLANG_INSTALL_DIR"] = "D:/tools/MWorks/Syslab 2024b/Tools/TyMLangDist"
-            
-            println("Current directory: ", pwd())
-            println("Loading packages...")
-            
-            # 导入基础包
-            using TyBase
             using TyPlot
-            using TyMath
-            
-            # 导入额外需要的包
-            {}
-            
-            # 设置工作目录
-            cd("{}")
-            println("Working directory: ", pwd())
-            
-            # 执行用户代码
+            using TyBase
+
+            # 执行用户代码:
             println("Executing user code:")
-            println("-" ^ 40)
+            println("-" * 40)
             
             {}
-            
-            println("-" ^ 40)
+
+            # 如果有图形，保存为图片
+            if gcf() !== nothing
+                savefig("output.syslabfig")
+                println("图形已保存")
+            end
+
+            println("-" * 40)
             println("Execution completed!")
-            """.format(
-                '\n'.join(f"using {pkg}" for pkg in required_packages),
-                Config.TEMP_DIR.replace("\\", "/"),
-                code
-            )
+            """.format(code)
             
             # 保存代码到临时文件
             with open(temp_file, "w", encoding="utf-8") as f:
@@ -184,60 +169,49 @@ class SyslabExecutor:
             logging.info("Starting code execution...")
             logging.info(f"Code to execute:\n{code}")
             
+            # 执行代码并获取输出
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 encoding='utf-8',
-                errors='replace',
                 env=env,
                 cwd=Config.TEMP_DIR
             )
             
-            try:
-                stdout, stderr = process.communicate(timeout=Config.EXEC_TIMEOUT)
-                
-                # 创建标准格式的返回结果
-                results = {
-                    'images': [],
-                    'text': [],
-                    'error': None
-                }
-                
-                # 处理标准输出
-                if stdout:
-                    results['text'].append(stdout.strip())
-                
-                # 处理错误输出
-                if stderr:
-                    results['error'] = stderr.strip()
-                
-                # 处理图片文件
-                fig_files = [f for f in os.listdir(Config.TEMP_DIR) if f.endswith('.syslabfig')]
-                for fig_file in fig_files:
-                    fig_path = os.path.join(Config.TEMP_DIR, fig_file)
-                    if os.path.exists(fig_path):
-                        with open(fig_path, 'rb') as f:
-                            img_data = f.read()
-                            img_base64 = base64.b64encode(img_data).decode('utf-8')
-                            results['images'].append({
-                                'id': len(results['images']),
-                                'data': f'data:image/png;base64,{img_base64}'
-                            })
-                        # 删除临时图片文件
-                        os.remove(fig_path)
-                
-                return results
+            # 读取输出
+            stdout, stderr = process.communicate()
+            
+            # 创建结果字典
+            results = {
+                'images': [],
+                'text': [],
+                'error': None,
+                'plot_window': True  # 标记需要显示图形窗口
+            }
+            
+            # 处理文本输出
+            if stdout:
+                results['text'] = [line.strip() for line in stdout.split('\n') if line.strip()]
+            
+            # 处理错误输出
+            if stderr:
+                results['error'] = stderr.strip()
+            
+            # 处理图形文件
+            fig_path = os.path.join(Config.TEMP_DIR, "output.syslabfig")
+            if os.path.exists(fig_path):
+                with open(fig_path, 'rb') as f:
+                    img_data = f.read()
+                    img_base64 = base64.b64encode(img_data).decode('utf-8')
+                    results['images'].append({
+                        'id': len(results['images']),
+                        'data': f'data:image/png;base64,{img_base64}'
+                    })
+            
+            return results
                     
-            except subprocess.TimeoutExpired:
-                process.kill()
-                return {
-                    'images': [],
-                    'text': [],
-                    'error': "执行超时"
-                }
-                
         except Exception as e:
             logging.error(f"Error executing code: {str(e)}")
             return {
