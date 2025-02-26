@@ -11,8 +11,8 @@ class Config:
     SYSLAB_PATH = os.getenv("SYSLAB_PATH", r"D:\tools\MWorks\Syslab 2024b\Bin\syslab.exe")
     
     # Julia 可执行文件路径
-    JULIA_PATH = os.getenv("JULIA_PATH", r"D:/tools/MWorks/Syslab 2024b/Tools/TyMLangDist/julia.exe")
-    
+    JULIA_PATH = os.getenv("JULIA_PATH", r"C:\Users\Public\TongYuan\julia-1.9.3\bin\julia.exe")
+
     # 日志路径
     LOG_PATH = os.getenv("LOG_PATH", r"C:\Users\Public\TongYuan\logs")
     

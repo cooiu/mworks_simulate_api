@@ -33,15 +33,7 @@ def init_julia_env():
     
     # 设置环境变量
     env = os.environ.copy()
-    env.update({
-        "PYTHON": "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe",
-        "JULIA_DEPOT_PATH": "C:/Users/Public/TongYuan/.julia",
-        "PATH": (
-            "C:/Users/Public/TongYuan/.julia/miniforge3;"
-            "C:/Users/Public/TongYuan/.julia/miniforge3/Scripts;"
-            f"{os.environ['PATH']}"
-        )
-    })
+    env.update(Config.ENV)
     
     # 创建临时目录
     os.makedirs(Config.TEMP_DIR, exist_ok=True)
