@@ -2,7 +2,6 @@ import subprocess
 import os
 from config import Config
 import concurrent.futures
-import logging
 
 """安装单个Julia包"""
 def install_package(pkg: str, env: dict) -> tuple:

@@ -11,7 +11,7 @@ class Config:
     SYSLAB_PATH = os.getenv("SYSLAB_PATH", r"D:\tools\MWorks\Syslab 2024b\Bin\syslab.exe")
     
     # Julia 可执行文件路径
-    JULIA_PATH = os.getenv("JULIA_PATH", r"C:\Users\Public\TongYuan\julia-1.9.3\bin\julia.exe")
+    JULIA_PATH = os.getenv("JULIA_PATH", r"D:/tools/MWorks/Syslab 2024b/Tools/TyMLangDist/julia.exe")
     
     # 日志路径
     LOG_PATH = os.getenv("LOG_PATH", r"C:\Users\Public\TongYuan\logs")
@@ -24,4 +24,15 @@ class Config:
     TEMP_DIR = os.getenv("TEMP_DIR", os.path.join(BASE_DIR, "temp"))
     
     # 执行超时时间（秒）
-    EXEC_TIMEOUT = int(os.getenv("EXEC_TIMEOUT", 120)) 
+    EXEC_TIMEOUT = int(os.getenv("EXEC_TIMEOUT", 120))
+    
+    # 环境变量
+    ENV = {
+        "PYTHON": "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe",
+        "JULIA_DEPOT_PATH": "C:/Users/Public/TongYuan/.julia",
+        "PATH": (
+            "C:/Users/Public/TongYuan/.julia/miniforge3;"
+            "C:/Users/Public/TongYuan/.julia/miniforge3/Scripts;"
+            f"{os.environ['PATH']}"
+        )
+    } 

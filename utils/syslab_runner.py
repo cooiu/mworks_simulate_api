@@ -1,12 +1,8 @@
 import subprocess
 import os
-import logging
-from pathlib import Path
 from typing import Dict, Any, List, Tuple
 from config import Config
-import base64
 import re
-import time
 
 class SyslabExecutor:
     @staticmethod
@@ -21,7 +17,7 @@ class SyslabExecutor:
         for match in matches:
             pkg_name = match.group(1)
             # 排除已在初始化时安装的基础包
-            if pkg_name not in ["TyBase", "TyPlot", "TyMath", "PyCall"]:
+            if pkg_name not in ["TyBase","TyPlot", "TyMath", "PyCall"]:
                 packages.append(pkg_name)
         
         return list(set(packages))  # 去重
@@ -75,151 +71,93 @@ class SyslabExecutor:
 
     @staticmethod
     def execute_code(code: str) -> Dict[str, Any]:
-        """执行 Julia 代码并返回结果"""
         try:
-            # 确保临时目录存在
-            os.makedirs(Config.TEMP_DIR, exist_ok=True)
+            results = {
+                'images': [],
+                'text': [],
+                'error': None
+            }
             
-            # 检查需要的额外包
-            required_packages = SyslabExecutor.check_required_packages(code)
-            if required_packages:
-                logging.info(f"Additional packages required: {required_packages}")
+            # 使用临时目录存储图片文件
+            temp_dir = os.path.abspath(Config.TEMP_DIR)
+            os.makedirs(temp_dir, exist_ok=True)
+            # fig_path = os.path.join(temp_dir, "output.svg")
             
-            # 设置环境变量
-            env = os.environ.copy()
-            env.update({
-                "PYTHON": "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe",
-                "JULIA_DEPOT_PATH": "C:/Users/Public/TongYuan/.julia",
-                "SYSLAB_HOME": "D:/tools/MWorks/Syslab 2024b",
-                "TYMLANG_CONFIG_DIR": "C:/Users/Public/TongYuan/syslab-mlang",
-                "TYMLANG_INSTALL_DIR": "D:/tools/MWorks/Syslab 2024b/Tools/TyMLangDist",
-                "PATH": (
-                    "C:/Users/Public/TongYuan/.julia/miniforge3;"
-                    "C:/Users/Public/TongYuan/.julia/miniforge3/Scripts;"
-                    f"{os.environ['PATH']};"
-                    "D:/tools/MWorks/Syslab 2024b/Bin"
-                )
-            })
-            
-            # 如果有额外的包，确保它们已安装
-            if required_packages:
-                success, message = SyslabExecutor.ensure_packages(required_packages, env)
-                if not success:
-                    return {
-                        'images': [],
-                        'text': [],
-                        'error': message
-                    }
-                logging.info("Additional packages installation successful")
-            
-            # 创建临时文件存储代码
-            temp_file = Path(Config.TEMP_DIR) / "temp_code.jl"
-            
-            # 添加必要的包导入和初始化代码
+            # 构建完整代码
             full_code = """
             using TyPlot
-            using TyBase
-
-            # 执行用户代码:
-            println("Executing user code:")
+            
             println("-"^40)
             
             {}
 
-            # 如果有图形，保存为图片
             if gcf() !== nothing
-                savefig("output.syslabfig")
-                println("图形已保存")
+                saveas(gcf(), "output.svg")
+                println("图形已保存为SVG格式")
             end
 
             println("-"^40)
-            println("Execution completed!")
             """.format(code)
-            
-            # 保存代码到临时文件
-            with open(temp_file, "w", encoding="utf-8") as f:
-                f.write(full_code)
-            
-            # 构造执行命令
-            cmd = [
-                Config.JULIA_PATH,
-                "--project=D:/tools/MWorks/Syslab 2024b/Tools/TyMLangDist",
-                str(temp_file)
-            ]
             
             # 设置环境变量
             env = os.environ.copy()
             env.update({
                 "PYTHON": "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe",
                 "JULIA_DEPOT_PATH": "C:/Users/Public/TongYuan/.julia",
-                "SYSLAB_HOME": "D:/tools/MWorks/Syslab 2024b",
-                "TYMLANG_CONFIG_DIR": "C:/Users/Public/TongYuan/syslab-mlang",
-                "TYMLANG_INSTALL_DIR": "D:/tools/MWorks/Syslab 2024b/Tools/TyMLangDist",
                 "PATH": (
                     "C:/Users/Public/TongYuan/.julia/miniforge3;"
                     "C:/Users/Public/TongYuan/.julia/miniforge3/Scripts;"
-                    f"{os.environ['PATH']};"
-                    "D:/tools/MWorks/Syslab 2024b/Bin"
+                    f"{os.environ['PATH']}"
                 )
             })
-            
-            logging.info(f"Executing command: {' '.join(cmd)}")
-            logging.info(f"Working directory: {Config.TEMP_DIR}")
-            
-            logging.info("Starting code execution...")
-            logging.info(f"Code to execute:\n{code}")
-            
-            # 执行代码并获取输出
+
+            # 执行代码
             process = subprocess.Popen(
-                cmd,
+                [Config.JULIA_PATH, "-e", full_code],
+                env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                encoding='utf-8',
-                env=env,
-                cwd=Config.TEMP_DIR
+                encoding='utf-8'
             )
             
-            # 读取输出
             stdout, stderr = process.communicate()
             
-            # 创建结果字典
-            results = {
-                'images': [],
-                'text': [],
-                'error': None,
-                'plot_window': True  # 标记需要显示图形窗口
-            }
-            
-            # 处理文本输出
             if stdout:
                 results['text'] = [line.strip() for line in stdout.split('\n') if line.strip()]
             
-            # 处理错误输出
             if stderr:
                 results['error'] = stderr.strip()
+                print(f"Julia错误: {stderr}")  # 打印错误信息
             
-            # 处理图形文件
-            fig_path = os.path.join(Config.TEMP_DIR, "output.syslabfig")
+            # 检查当前工作目录下的图片文件
+            fig_path = "output.svg"  # 直接在当前目录查找
+            print(f"检查图片文件: {fig_path}")
+            
             if os.path.exists(fig_path):
-                with open(fig_path, 'rb') as f:
-                    img_data = f.read()
-                    img_base64 = base64.b64encode(img_data).decode('utf-8')
-                    results['images'].append({
-                        'id': len(results['images']),
-                        'data': f'data:image/png;base64,{img_base64}'
-                    })
+                print("找到图片文件")
+                try:
+                    with open(fig_path, 'r', encoding='utf-8') as f:
+                        svg_data = f.read()
+                        results['images'].append({
+                            'id': len(results['images']),
+                            'type': 'svg',
+                            'data': svg_data
+                        })
+                    # 读取完成后删除文件
+                    os.remove(fig_path)
+                    print("图片文件已删除")
+                except Exception as e:
+                    print(f"处理图片文件时出错: {e}")
+            else:
+                print("图片文件不存在")
             
             return results
-                    
+            
         except Exception as e:
-            logging.error(f"Error executing code: {str(e)}")
+            print(f"Python错误: {str(e)}")  # 打印错误信息
             return {
-                'images': [],
-                'text': [],
-                'error': str(e)
+                'images': [], 
+                'text': [], 
+                'error': f"执行错误: {str(e)}"
             }
-        finally:
-            # 清理临时文件
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
