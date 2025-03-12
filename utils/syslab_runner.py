@@ -69,7 +69,6 @@ class SyslabExecutor:
                 
             if gcf() !== nothing
                 saveas(gcf(), "{}")
-                println("图形已保存")
             end
 
             """.format(code,fig_path.replace('\\', '/'))
@@ -85,7 +84,7 @@ class SyslabExecutor:
                 encoding='utf-8'
             )
             stdout, stderr = process.communicate()
-            
+            print(stdout,"标准输出")
             if stdout:
                 results['text'] = [line.strip() for line in stdout.split('\n') if line.strip()]
             
@@ -96,10 +95,15 @@ class SyslabExecutor:
             # 处理图像
             if os.path.exists(fig_path):
                 with open(fig_path, 'r', encoding='utf-8') as f:
-                    results['images'].append({
-                        'type': 'svg',
-                        'data': f.read()
-                    })
+                    svg_content = f.read()
+                    # 检查 SVG 内容是否为空或只包含基本标签
+                    if len(svg_content.strip()) < 100 or "<rect" not in svg_content:
+                        results['images'] = []
+                    else:
+                        results['images'].append({
+                            'type': 'svg',
+                            'data': svg_content
+                        })
                 os.remove(fig_path)
             
             return results
