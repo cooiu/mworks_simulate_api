@@ -67,9 +67,7 @@ class SyslabExecutor:
             
             {}
                 
-            if gcf() !== nothing
-                saveas(gcf(), "{}")
-            end
+            saveas(gcf(), "{}")
 
             """.format(code,fig_path.replace('\\', '/'))
             print(full_code)
