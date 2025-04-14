@@ -81,57 +81,70 @@ class ProcessManager:
         
         # 初始化Julia环境 - 只加载包，不安装
         init_code = """
-        println("Initializing Julia environment...")
+        println("正在初始化Julia环境...")
         
         # 设置环境变量
         ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
         ENV["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
         ENV["PLOTS_DEFAULT_BACKEND"] = "svg"
         
-        # 导入必要的包
-        println("Loading packages...")
+        # 导入必要的包 - 确保在全局作用域中
+        println("正在加载包...")
+        
         try
             using PyCall
-            println("PyCall loaded")
+            println("PyCall 已加载")
         catch e
-            println("Error loading PyCall: ", e)
+            println("加载 PyCall 失败: " * string(e))
         end
         
         try
-            using Plots
-            println("Plots loaded")
-        catch e
-            println("Error loading Plots: ", e)
-        end
-        
-        try
+            # 明确设置后端为SVG
+            ENV["GKS_ENCODING"] = "utf8"
+            ENV["PLOTS_DEFAULT_BACKEND"] = "svg"
+            
             using TyPlot
-            println("TyPlot loaded")
+            println("TyPlot 已加载")
+            
+            # 导出TyPlot中的关键函数到全局作用域
+            global figure = TyPlot.figure
+            global plot = TyPlot.plot
+            global title = TyPlot.title
+            global xlabel = TyPlot.xlabel
+            global ylabel = TyPlot.ylabel
+            global grid = TyPlot.grid
+            global gcf = TyPlot.gcf
+            global saveas = TyPlot.saveas
+            
+            # 测试图形后端
+            TyPlot.backend(:svg)
+            println("图形后端设置为: svg")
+            
         catch e
-            println("Error loading TyPlot: ", e)
+            println("加载 TyPlot 失败: " * string(e))
         end
         
         try
             using TyBase
-            println("TyBase loaded")
+            println("TyBase 已加载")
         catch e
-            println("Error loading TyBase: ", e)
+            println("加载 TyBase 失败: " * string(e))
         end
         
         try
             using TyMath
-            println("TyMath loaded")
+            println("TyMath 已加载")
         catch e
-            println("Error loading TyMath: ", e)
+            println("加载 TyMath 失败: " * string(e))
         end
         
-        println("Julia环境初始化完成")
+        println("Julia环境初始化完成!")
         """
         
         try:
             process.stdin.write(init_code + "\n")
             process.stdin.flush()
-            time.sleep(3)  # 等待初始化完成
+            time.sleep(5)  # 增加等待时间以确保初始化完成
         except Exception as e:
             logging.error(f"Error initializing Julia environment: {str(e)}")
             return False
@@ -238,30 +251,70 @@ class ProcessManager:
         error_queue = self.error_queues[session_id]
 
         try:
-            # Clear any existing output
+            # 彻底清空现有输出
+            logging.debug(f"清空会话 {session_id} 的输出队列")
+            while not output_queue.empty():
+                output_queue.get_nowait()
+            while not error_queue.empty():
+                error_queue.get_nowait()
+            
+            # 发送一个清空命令到Julia进程
+            process.stdin.write("println(\"CLEAR_OUTPUT_MARKER\")\n")
+            process.stdin.flush()
+            
+            # 等待清空标记被处理
+            timeout = time.time() + 1.0
+            while time.time() < timeout:
+                try:
+                    line = output_queue.get_nowait()
+                    if "CLEAR_OUTPUT_MARKER" in line:
+                        break
+                except queue.Empty:
+                    time.sleep(0.1)
+            
+            # 再次清空，确保没有残留输出
             while not output_queue.empty():
                 output_queue.get_nowait()
             while not error_queue.empty():
                 error_queue.get_nowait()
 
-            # Send code to process
+            # 发送代码到进程
+            logging.debug(f"发送代码到会话 {session_id}")
             process.stdin.write(code + "\n")
             process.stdin.flush()
 
-            # Collect output
+            # 收集输出
             output = []
             error_output = []
             
-            # 等待输出，最多等待10秒
+            # 增加等待输出的时间，因为绘图操作可能比较耗时
+            max_wait_time = 15  # 等待15秒
+            output_idle_time = 1.0  # 如果1秒内没有新输出，认为完成
+            
             start_time = time.time()
-            while time.time() - start_time < 10:
+            last_output_time = start_time
+            
+            # 跟踪已看到的输出行，避免重复
+            seen_stdout = set()
+            seen_stderr = set()
+            
+            logging.debug(f"等待会话 {session_id} 的输出")
+            while time.time() - start_time < max_wait_time:
+                output_received = False
+                
                 try:
                     # 检查标准输出
                     while True:
                         try:
                             line = output_queue.get_nowait()
-                            output.append(line)
-                            logging.debug(f"Session {session_id} stdout: {line}")
+                            if line and line not in seen_stdout:  # 避免重复输出
+                                # 跳过特殊标记
+                                if "CLEAR_OUTPUT_MARKER" not in line:
+                                    seen_stdout.add(line)
+                                    output.append(line)
+                                    output_received = True
+                                    last_output_time = time.time()
+                                    logging.debug(f"Session {session_id} stdout: {line}")
                         except queue.Empty:
                             break
                     
@@ -269,18 +322,28 @@ class ProcessManager:
                     while True:
                         try:
                             line = error_queue.get_nowait()
-                            error_output.append(line)
-                            logging.debug(f"Session {session_id} stderr: {line}")
+                            if line and line not in seen_stderr:  # 避免重复输出
+                                seen_stderr.add(line)
+                                error_output.append(line)
+                                output_received = True
+                                last_output_time = time.time()
+                                logging.debug(f"Session {session_id} stderr: {line}")
                         except queue.Empty:
                             break
                     
+                    # 如果已经有输出，并且有一段时间没有新的输出，认为执行完成
+                    if (output or error_output) and time.time() - last_output_time > output_idle_time:
+                        break
+                    
                     # 如果没有新的输出，等待一小段时间
-                    if not output and not error_output:
+                    if not output_received:
                         time.sleep(0.1)
                     
                 except Exception as e:
                     logging.error(f"Error collecting output: {str(e)}")
                     break
+            
+            logging.debug(f"会话 {session_id} 执行完成，收集到 {len(output)} 行输出和 {len(error_output)} 行错误")
 
             # 如果有错误输出，返回错误
             if error_output:

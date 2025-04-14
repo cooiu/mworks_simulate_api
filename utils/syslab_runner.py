@@ -85,18 +85,24 @@ class SyslabExecutor:
         ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
         ENV["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
         
-        # 导入包
+        # 导入包 - 确保在全局范围内导入
         try
             using PyCall
             using TyPlot
             using TyBase
             using TyMath
-            println("All packages loaded successfully")
+            
+            # 确保TyPlot正确加载
+            if isdefined(Main, :TyPlot)
+                println("TyPlot已加载")
+            end
+            
+            println("所有包加载成功")
         catch e
             println("Error loading packages: " * string(e))
         end
         
-        println("Julia session initialized")
+        println("Julia会话初始化完成")
         """
         
         result = SyslabExecutor._process_manager.execute_code(session_id, init_code)
@@ -145,26 +151,40 @@ class SyslabExecutor:
             # 处理路径中的反斜杠
             fig_path = fig_path.replace('\\', '/')
             
+            # 清空任何现有输出
+            if session_id in SyslabExecutor._process_manager.output_queues:
+                queue = SyslabExecutor._process_manager.output_queues[session_id]
+                while not queue.empty():
+                    queue.get_nowait()
+            
+            if session_id in SyslabExecutor._process_manager.error_queues:
+                queue = SyslabExecutor._process_manager.error_queues[session_id]
+                while not queue.empty():
+                    queue.get_nowait()
+            
             # 构建完整的执行代码
             full_code = f"""
             using TyPlot
             
             # 执行用户代码
-            println("Executing user code...")
-            begin
-                {code}
+            {code}
+
+            # 尝试保存图形
+            try
+                fig = TyPlot.gcf()
+                if fig !== nothing
+                    TyPlot.saveas(fig, "{fig_path}")
+                    println("图形已保存到: {fig_path}")
+                else
+                    println("没有找到活动的图形对象")
+                end
+            catch e
+                println("保存图形出错: " * string(e))
             end
             
-            # 保存图形
-            if gcf() !== nothing
-                saveas(gcf(), "{fig_path}")
-                println("图形已保存到: {fig_path}")
-            else
-                println("没有图形需要保存")
-            
             # 确保输出被刷新
-            # flush(stdout)
-            # flush(stderr)
+            flush(stdout)
+            flush(stderr)
             """
             
             # Execute code in the session
@@ -173,25 +193,50 @@ class SyslabExecutor:
             if result.get('error'):
                 return {'error': result['error']}
             
-            results['text'] = result['text']
+            # 过滤重复输出
+            seen_lines = set()
+            filtered_text = []
+            for line in result.get('text', []):
+                if line and line not in seen_lines:
+                    seen_lines.add(line)
+                    filtered_text.append(line)
             
-            # 处理图像
+            results['text'] = filtered_text
+            
+            # 处理图像 - 检测空图像
             if os.path.exists(fig_path):
                 try:
                     with open(fig_path, 'r', encoding='utf-8') as f:
                         svg_content = f.read()
-                        if len(svg_content.strip()) > 100 and "<svg" in svg_content:
+                        
+                        # 检查SVG是否为空图像
+                        is_empty_svg = False
+                        
+                        # 1. 检查文件大小
+                        if len(svg_content) < 1200:  # 通常空SVG约1000-1200字节
+                            # 2. 检查是否缺少绘图元素(path, rect 等)
+                            if "<path" not in svg_content or ('id="patch_1"' in svg_content and 'id="patch_2"' not in svg_content):
+                                is_empty_svg = True
+                                
+                        # 3. 额外检查，如果缺少绘图元素
+                        if "<g id=\"axes_1\"" not in svg_content:
+                            is_empty_svg = True
+                            
+                        if not is_empty_svg and "<svg" in svg_content:
                             results['images'].append({
                                 'type': 'svg',
                                 'data': svg_content
                             })
-                            logging.info(f"生成了图形，大小: {len(svg_content)} 字节")
+                            logging.info(f"生成了有效图形，大小: {len(svg_content)} 字节")
                         else:
-                            logging.warning(f"图形文件无效: {fig_path}")
+                            logging.info(f"检测到空图像，大小: {len(svg_content)} 字节，不添加到结果中")
+                    
                     os.remove(fig_path)
                 except Exception as e:
                     logging.error(f"读取图像文件失败: {str(e)}")
                     results['error'] = f"读取图像文件失败: {str(e)}"
+            else:
+                logging.info("没有生成图形文件")
             
             # Clean up temporary session
             if session_id and session_id.startswith('temp_'):

@@ -36,14 +36,21 @@ def test_session_api():
         # 2. 执行第一段代码：生成数据并绘图
         print("\n2. 执行第一段代码：生成数据并绘图...")
         code1 = """# 生成测试数据
-# 测试基本功能
 using TyPlot
-x = 0:(pi / 100):(2 * pi);
-y = sin.(x);
+
+# 生成数据
+x = 0:(pi/100):(2*pi);
+y1 = sin.(x);
+y2 = cos.(x);
 println("数据已生成")
 
-plot(x, y)
-title("测试图形")
+# 明确创建图形
+figure()  # 创建新图形
+plot(x, y1)  # 绘制正弦曲线
+title("正弦波")  # 添加标题
+xlabel("x")  # x轴标签
+ylabel("sin(x)")  # y轴标签
+grid(true)  # 显示网格
 println("图形已创建") 
 """
         response = requests.post(
@@ -74,13 +81,14 @@ println("图形已创建")
         # 3. 执行第二段代码：使用之前定义的变量
         print("\n3. 执行第二段代码：使用之前定义的变量...")
         code2 = """# 使用之前定义的变量进行新的计算
-println("\\n使用之前定义的变量:")
+println("变量y1的前几个值: ", y1[1:5])
+println("变量类型: ", typeof(y1))
 println("x 的长度: ", length(x))
 println("y1 的长度: ", length(y1))
 
-# 创建新的图形
-println("创建新的图形...")
-plot(x, y2)
+# 创建新的图形，确保使用figure()显式创建
+figure()  # 创建新图形窗口
+plot(x, y2, linewidth=2, color="red")
 title("余弦波信号")
 xlabel("x")
 ylabel("cos(x)")
@@ -161,9 +169,12 @@ def test_multiple_sessions():
             if response.status_code == 200:
                 # 在每个会话中执行简单的代码
                 code = f"""# 测试图形输出
-x = 0:(pi / 100):(2 * pi);
+using TyPlot
+x = 0:(pi/100):(2*pi);
 y = sin.(x);
-# x, y = get_xy()
+
+# 创建图形
+figure()
 plot(x, y)
 title("会话 {session_id} 的测试图形")
 println("这是会话 {session_id} 的输出")
