@@ -160,7 +160,6 @@ class SyslabExecutor:
             
             # # 处理路径中的反斜杠 - 规范化路径格式
             fig_path_julia = fig_path.replace('\\', '/')
-            # logging.info(f"主图像路径: {fig_path} (Julia格式: {fig_path_julia})")
             
             # 清空任何现有输出
             if session_id in SyslabExecutor._process_manager.output_queues:
@@ -185,7 +184,6 @@ class SyslabExecutor:
             plt_close()
 
             """
-            print(full_code)
             # Execute code in the session
             result = SyslabExecutor._process_manager.execute_code(session_id, full_code)
             
@@ -198,20 +196,10 @@ class SyslabExecutor:
             if result.get('text'):
                 text_output = []
                 for line in result.get('text', []):
-                    if any(keyword in line for keyword in [
-                        "VERIFY_SUCCESS", "VERIFY_FAIL", "图形将保存到", "保存图形时出错",
-                        "正在保存图形", "图形已保存到", "准备执行用户代码", "图形保存完成", 
-                        "保存图形到", "获取到图形对象", "文件大小:"
-                    ]):
-                        logging.info(f"Julia输出: {line}")
-                    else:
-                        text_output.append(line)
+                    text_output.append(line)
                 
                 results['text'] = text_output
                 logging.info(f"收集到文本输出: {len(text_output)} 行")
-            
-            # 为确保文件已写入，等待一小段时间
-            time.sleep(5)
 
             # 处理图像
             if os.path.exists(fig_path):
@@ -230,53 +218,6 @@ class SyslabExecutor:
                     logging.info(f"已删除SVG文件: {fig_path}")
                 except Exception as e:
                     logging.warning(f"删除SVG文件失败: {str(e)}")
-
-            # # 处理找到的图像
-            # if fig_path:
-            #     try:
-            #         with open(fig_path, 'r', encoding='utf-8') as f:
-            #             svg_content = f.read()
-            #             content_size = len(svg_content)
-                        
-            #             logging.info(f"SVG文件大小: {content_size} 字节")
-                        
-            #             # 检测空图像：没有path标签或文件太小
-            #             is_empty_figure = (content_size < 1200)
-                        
-            #             logging.info(f"空图像检测结果: {is_empty_figure}")
-                        
-            #             if not is_empty_figure:
-            #                 # 有效的SVG文件，添加到结果中
-            #                 results['images'].append({
-            #                     'type': 'svg',
-            #                     'data': svg_content
-            #                 })
-            #                 logging.info(f"成功添加SVG图像到结果, 来自: {fig_path}")
-            #             else:
-            #                 logging.warning(f"SVG图像被判定为空或无效，大小: {content_size} 字节")
-            #                 # 保存文件以便调试
-            #                 debug_path = f"{fig_path}.debug"
-            #                 with open(debug_path, 'w', encoding='utf-8') as df:
-            #                     df.write(svg_content)
-            #                 logging.info(f"已保存SVG到调试文件: {debug_path}")
-                    
-            #             try:
-            #                 os.remove(fig_path)
-            #                 logging.info(f"已删除SVG文件: {fig_path}")
-            #             except Exception as e:
-            #                 logging.warning(f"删除SVG文件失败: {str(e)}")
-                    
-            #     except Exception as e:
-            #         logging.error(f"读取SVG文件失败: {str(e)}", exc_info=True)
-            #         results['error'] = f"处理图像文件失败: {str(e)}"
-            # else:
-            #     logging.warning(f"未找到任何SVG图像文件")
-            #     try:
-            #         dir_contents = os.listdir(temp_dir)
-            #         svg_files = [f for f in dir_contents if f.endswith('.svg')]
-            #         logging.info(f"目录 {temp_dir} 中的SVG文件: {svg_files}")
-            #     except Exception as e:
-            #         logging.warning(f"无法列出目录内容: {str(e)}")
             
             # Clean up temporary session
             if session_id and session_id.startswith('temp_'):
