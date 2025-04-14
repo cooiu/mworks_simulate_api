@@ -99,27 +99,8 @@ class ProcessManager:
         end
         
         try
-            # 明确设置后端为SVG
-            ENV["GKS_ENCODING"] = "utf8"
-            ENV["PLOTS_DEFAULT_BACKEND"] = "svg"
-            
             using TyPlot
-            println("TyPlot 已加载")
-            
-            # 导出TyPlot中的关键函数到全局作用域
-            global figure = TyPlot.figure
-            global plot = TyPlot.plot
-            global title = TyPlot.title
-            global xlabel = TyPlot.xlabel
-            global ylabel = TyPlot.ylabel
-            global grid = TyPlot.grid
-            global gcf = TyPlot.gcf
-            global saveas = TyPlot.saveas
-            
-            # 测试图形后端
-            TyPlot.backend(:svg)
-            println("图形后端设置为: svg")
-            
+            println("TyPlot loaded")
         catch e
             println("加载 TyPlot 失败: " * string(e))
         end
@@ -259,7 +240,7 @@ class ProcessManager:
                 error_queue.get_nowait()
             
             # 发送一个清空命令到Julia进程
-            process.stdin.write("println(\"CLEAR_OUTPUT_MARKER\")\n")
+            process.stdin.write("println(\"clc\")\n")
             process.stdin.flush()
             
             # 等待清空标记被处理
@@ -267,7 +248,7 @@ class ProcessManager:
             while time.time() < timeout:
                 try:
                     line = output_queue.get_nowait()
-                    if "CLEAR_OUTPUT_MARKER" in line:
+                    if "clc" in line:
                         break
                 except queue.Empty:
                     time.sleep(0.1)
@@ -309,7 +290,7 @@ class ProcessManager:
                             line = output_queue.get_nowait()
                             if line and line not in seen_stdout:  # 避免重复输出
                                 # 跳过特殊标记
-                                if "CLEAR_OUTPUT_MARKER" not in line:
+                                if "clc" not in line:
                                     seen_stdout.add(line)
                                     output.append(line)
                                     output_received = True
