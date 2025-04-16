@@ -168,6 +168,7 @@ class SyslabExecutor:
             
             # 构建完整的执行代码
             full_code = f"""
+            # 加载必要的包
             using TyPlot
 
             plt_close()
@@ -186,33 +187,109 @@ class SyslabExecutor:
                 logging.error(f"执行代码错误: {result.get('error')}")
                 results['error'] = result.get('error')
             
-            # 提取输出文本，但过滤掉图形保存相关消息
             if result.get('text'):
+                # 过滤掉与图形相关的消息和多余的信息
                 text_output = []
+                graph_messages = []
                 for line in result.get('text', []):
-                    text_output.append(line)
+                    # 过滤掉与图形相关的消息
+                    if any(msg in line for msg in ["图形已保存", "图形保存完成", 
+                                                  "VERIFY_SUCCESS", "VERIFY_FAIL", 
+                                                  "文件大小", "PLOT_DEBUG", "获取到图形对象"]):
+                        graph_messages.append(line)
+                    # 过滤掉矢量数据描述行
+                    elif any(keyword in line for keyword in ["-element Vector{", "PyObject", "elements"]):
+                        continue
+                    # 过滤掉变量的定义行
+                    elif ":" in line and not "println" in line.lower():
+                        continue
+                    else:
+                        # 检查是否是纯数值输出（比如println的结果）
+                        stripped_line = line.strip()
+                        if stripped_line and (stripped_line.replace('.', '', 1).replace('-', '', 1).isdigit() or 
+                                            stripped_line in ['true', 'false']):
+                            text_output.append(stripped_line)
+                        # 否则，检查是否是有意义的文本输出
+                        elif len(stripped_line) > 0 and not stripped_line.startswith('[') and not stripped_line.endswith(']'):
+                            text_output.append(stripped_line)
                 
                 results['text'] = text_output
                 logging.info(f"收集到文本输出: {len(text_output)} 行")
-
-            time.sleep(0.5)
-            # 处理图像
-            if os.path.exists(fig_path):
-                with open(fig_path, 'r', encoding='utf-8') as f:
-                    svg_content = f.read()
-                    # 检查 SVG 内容是否为空或只包含基本标签
-                    if len(svg_content.strip()) < 100 or "<rect" not in svg_content:
-                        results['images'] = []
-                    else:
-                        results['images'].append({
-                            'type': 'svg',
-                            'data': svg_content
-                        })
+                logging.info(f"图形相关消息: {graph_messages}")
+            
+            # 等待文件写入完成
+            max_wait_time = 5  # 最大等待时间（秒）
+            wait_interval = 0.5  # 检查间隔（秒）
+            total_wait = 0
+            found_svg = None
+            
+            while total_wait < max_wait_time:
+                if os.path.exists(fig_path):
+                    # 检查文件是否可读且大小稳定
+                    try:
+                        with open(fig_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            if content and len(content) > 0:
+                                found_svg = fig_path
+                                logging.info(f"找到有效的SVG文件: {fig_path}, 大小: {len(content)} 字节")
+                                break
+                    except Exception as e:
+                        logging.info(f"文件 {fig_path} 暂时不可读: {str(e)}")
+                
+                if found_svg:
+                    break
+                    
+                logging.info(f"等待文件创建... ({total_wait:.1f}/{max_wait_time} 秒)")
+                time.sleep(wait_interval)
+                total_wait += wait_interval
+            
+            # 处理找到的SVG文件
+            if found_svg:
                 try:
-                    os.remove(fig_path)
-                    logging.info(f"已删除SVG文件: {fig_path}")
+                    # 确保文件完全写入
+                    time.sleep(0.5)
+                    
+                    with open(found_svg, 'r', encoding='utf-8') as f:
+                        svg_content = f.read()
+                        content_size = len(svg_content)
+                        logging.info(f"SVG文件大小: {content_size} 字节")
+                        
+                        # 检查SVG内容是否有效
+                        has_rect_tag = '<rect' in svg_content
+                        
+                        # 只要文件大小合理且包含SVG标签，就认为有效
+                        if has_rect_tag and content_size > 1200:
+                            results['images'].append({
+                                'type': 'svg',
+                                'data': svg_content
+                            })
+                            logging.info(f"成功添加SVG图像，大小: {content_size} 字节")
+                        else:
+                            logging.warning(f"SVG文件内容可能无效: has_svg_tag={has_rect_tag}, content_size={content_size}")
+                            # 保存一份以便调试
+                            # debug_path = f"{found_svg}.debug"
+                            # with open(debug_path, 'w', encoding='utf-8') as df:
+                            #     df.write(svg_content)
+                            # logging.info(f"已保存SVG内容到调试文件: {debug_path}")
+                    
+                    try:
+                        os.remove(found_svg)
+                        logging.info(f"已删除SVG文件: {found_svg}")
+                    except Exception as e:
+                        logging.warning(f"删除SVG文件失败: {str(e)}")
                 except Exception as e:
-                    logging.warning(f"删除SVG文件失败: {str(e)}")
+                    logging.error(f"处理SVG文件失败: {str(e)}", exc_info=True)
+                    results['error'] = f"处理图像文件失败: {str(e)}"
+            else:
+                logging.warning(f"未找到任何SVG图像文件")
+                # 列出临时目录内容
+                try:
+                    dir_contents = sorted(os.listdir(temp_dir))
+                    svg_files = [f for f in dir_contents if f.endswith('.svg')]
+                    logging.info(f"目录中的所有文件: {dir_contents}")
+                    logging.info(f"SVG文件: {svg_files}")
+                except Exception as e:
+                    logging.warning(f"无法列出目录内容: {str(e)}")
             
             # Clean up temporary session
             if session_id and session_id.startswith('temp_'):

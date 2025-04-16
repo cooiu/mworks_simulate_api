@@ -302,9 +302,23 @@ class ProcessManager:
             while not error_queue.empty():
                 error_queue.get_nowait()
 
+            # 预处理代码：检查是否有分号结尾的行
+            lines = code.strip().split('\n')
+            semicolon_lines = []
+            processed_code = []
+            
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped.endswith(';'):
+                    semicolon_lines.append(i)
+                processed_code.append(line)
+            
+            # 记录包含分号的行，以便后续过滤对应输出
+            logging.debug(f"发现{len(semicolon_lines)}行代码以分号结尾")
+            
             # 发送代码到进程
             logging.debug(f"发送代码到会话 {session_id}")
-            process.stdin.write(code + "\n")
+            process.stdin.write('\n'.join(processed_code) + "\n")
             process.stdin.flush()
 
             # 收集输出
@@ -335,6 +349,21 @@ class ProcessManager:
                                 # 跳过特殊标记
                                 if "clc" not in line:
                                     seen_stdout.add(line)
+                                    
+                                    # 记录原始输出行，用于调试
+                                    logging.debug(f"原始输出行 [{len(line)}]: '{line}'")
+                                    
+                                    # 跳过Julia提示符
+                                    if line.strip().startswith("julia>"):
+                                        logging.debug(f"跳过Julia提示符: {line}")
+                                        continue
+                                    
+                                    # 检查是否是警告或系统消息
+                                    if "DeprecationWarning" in line or "WARNING" in line:
+                                        logging.debug(f"跳过警告信息: {line}")
+                                        continue
+                                    
+                                    # 保留所有输出 - 不再对println输出进行过滤
                                     output.append(line)
                                     output_received = True
                                     last_output_time = time.time()
@@ -376,8 +405,14 @@ class ProcessManager:
                     'text': output
                 }
 
+            # 过滤掉Julia REPL提示符等不需要的输出
+            filtered_output = []
+            for line in output:
+                if not line.startswith("julia>") and "DeprecationWarning" not in line:
+                    filtered_output.append(line)
+
             return {
-                'text': output,
+                'text': filtered_output,
                 'error': None
             }
 
