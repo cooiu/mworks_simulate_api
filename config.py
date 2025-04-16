@@ -19,8 +19,6 @@ class Config:
     # 执行超时时间（秒）
     EXEC_TIMEOUT = int(os.getenv("EXEC_TIMEOUT", 120))
     
-    # 调试模式
-    DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
     
     # 环境变量
     ENV = {

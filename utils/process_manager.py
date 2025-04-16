@@ -29,6 +29,10 @@ class ProcessManager:
         if session_id in self.processes:
             return False
 
+        # 记录开始时间
+        start_time = time.time()
+        logging.info(f"开始创建Julia会话 {session_id}...")
+
         env = os.environ.copy()
         env.update(Config.ENV)
         
@@ -39,13 +43,15 @@ class ProcessManager:
         
         # 设置Julia环境变量
         env["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
-        env["PLOTS_DEFAULT_BACKEND"] = "svg"
         env["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
 
         # 预先安装和构建包
         self._pre_install_packages(env)
         
         # 使用 -i 参数启动交互式会话
+        process_start_time = time.time()
+        logging.info(f"启动Julia进程...")
+        
         process = subprocess.Popen(
             [Config.JULIA_PATH, "-i"],
             env=env,
@@ -58,6 +64,9 @@ class ProcessManager:
             bufsize=1,
             universal_newlines=True
         )
+
+        process_time = time.time() - process_start_time
+        logging.info(f"Julia进程启动耗时: {process_time:.2f}秒")
 
         self.processes[session_id] = process
         self.output_queues[session_id] = queue.Queue()
@@ -77,16 +86,18 @@ class ProcessManager:
         ).start()
 
         # 等待进程初始化
-        time.sleep(1)
+        # time.sleep(1)
         
-        # 初始化Julia环境 - 只加载包，不安装
+        # 初始化Julia环境
+        init_start_time = time.time()
+        logging.info("开始初始化Julia环境...")
+        
         init_code = """
         println("正在初始化Julia环境...")
         
         # 设置环境变量
         ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
         ENV["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
-        ENV["PLOTS_DEFAULT_BACKEND"] = "svg"
         
         # 导入必要的包 - 确保在全局作用域中
         println("正在加载包...")
@@ -125,11 +136,43 @@ class ProcessManager:
         try:
             process.stdin.write(init_code + "\n")
             process.stdin.flush()
-            time.sleep(5)  # 增加等待时间以确保初始化完成
+            
+            # 等待初始化完成，同时收集输出
+            wait_time = 5  # 初始等待时间
+            max_wait_time = 60  # 最大等待时间
+            elapsed = 0
+            
+            output_queue = self.output_queues[session_id]
+            while elapsed < max_wait_time:
+                # 检查是否收到初始化完成的消息
+                init_completed = False
+                while not output_queue.empty():
+                    line = output_queue.get_nowait()
+                    if "Julia环境初始化完成" in line:
+                        init_completed = True
+                        break
+                
+                if init_completed:
+                    break
+                    
+                time.sleep(1)
+                elapsed += 1
+                
+                # 每10秒输出一次等待信息
+                if elapsed % 10 == 0:
+                    logging.info(f"已等待Julia环境初始化 {elapsed} 秒...")
+            
+            init_time = time.time() - init_start_time
+            logging.info(f"Julia环境初始化耗时: {init_time:.2f}秒")
+            
         except Exception as e:
             logging.error(f"Error initializing Julia environment: {str(e)}")
             return False
             
+        # 计算总耗时
+        total_time = time.time() - start_time
+        logging.info(f"会话 {session_id} 创建完成，总耗时: {total_time:.2f}秒")
+        
         return True
         
     def _pre_install_packages(self, env):
@@ -240,7 +283,7 @@ class ProcessManager:
                 error_queue.get_nowait()
             
             # 发送一个清空命令到Julia进程
-            process.stdin.write("println(\"clc\")\n")
+            process.stdin.write("clc\n")
             process.stdin.flush()
             
             # 等待清空标记被处理

@@ -6,7 +6,6 @@ from .process_manager import ProcessManager
 import re
 import logging
 import time
-import pathlib
 
 class SyslabExecutor:
     _process_manager = ProcessManager()
@@ -79,38 +78,33 @@ class SyslabExecutor:
         if not success:
             return {'error': 'Session already exists'}
         
-        # 会话初始化
-        init_code = """
-        println("Initializing Julia session...")
+        # # 会话初始化
+        # init_code = """
+        # println("Initializing Julia session...")
         
-        # 设置环境变量
-        ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
-        ENV["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
+        # # 设置环境变量
+        # ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
+        # ENV["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
         
-        # 导入包 - 确保在全局范围内导入
-        try
-            using PyCall
-            using TyPlot
-            using TyBase
-            using TyMath
+        # # 导入包 - 确保在全局范围内导入
+        # try
+        #     using PyCall
+        #     using TyPlot
+        #     using TyBase
+        #     using TyMath
             
-            # 确保TyPlot正确加载
-            if isdefined(Main, :TyPlot)
-                println("TyPlot已加载")
-            end
-            
-            println("所有包加载成功")
-        catch e
-            println("Error loading packages: " * string(e))
-        end
+        #     println("所有包加载成功")
+        # catch e
+        #     println("Error loading packages: " * string(e))
+        # end
         
-        println("Julia会话初始化完成")
-        """
+        # println("Julia会话初始化完成")
+        # """
         
-        result = SyslabExecutor._process_manager.execute_code(session_id, init_code)
-        if result.get('error'):
-            SyslabExecutor._process_manager.terminate_session(session_id)
-            return result
+        # result = SyslabExecutor._process_manager.execute_code(session_id, init_code)
+        # if result.get('error'):
+        #     SyslabExecutor._process_manager.terminate_session(session_id)
+        #     return result
         
         return {'message': 'Session created successfully'}
 
@@ -161,16 +155,16 @@ class SyslabExecutor:
             # # 处理路径中的反斜杠 - 规范化路径格式
             fig_path_julia = fig_path.replace('\\', '/')
             
-            # 清空任何现有输出
-            if session_id in SyslabExecutor._process_manager.output_queues:
-                queue = SyslabExecutor._process_manager.output_queues[session_id]
-                while not queue.empty():
-                    queue.get_nowait()
+            # # 清空任何现有输出
+            # if session_id in SyslabExecutor._process_manager.output_queues:
+            #     queue = SyslabExecutor._process_manager.output_queues[session_id]
+            #     while not queue.empty():
+            #         queue.get_nowait()
             
-            if session_id in SyslabExecutor._process_manager.error_queues:
-                queue = SyslabExecutor._process_manager.error_queues[session_id]
-                while not queue.empty():
-                    queue.get_nowait()
+            # if session_id in SyslabExecutor._process_manager.error_queues:
+            #     queue = SyslabExecutor._process_manager.error_queues[session_id]
+            #     while not queue.empty():
+            #         queue.get_nowait()
             
             # 构建完整的执行代码
             full_code = f"""
@@ -201,6 +195,7 @@ class SyslabExecutor:
                 results['text'] = text_output
                 logging.info(f"收集到文本输出: {len(text_output)} 行")
 
+            time.sleep(0.5)
             # 处理图像
             if os.path.exists(fig_path):
                 with open(fig_path, 'r', encoding='utf-8') as f:
