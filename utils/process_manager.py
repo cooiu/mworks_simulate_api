@@ -35,18 +35,8 @@ class ProcessManager:
 
         env = os.environ.copy()
         env.update(Config.ENV)
-        
-        # 设置编码
-        env["PYTHONIOENCODING"] = "utf-8"
-        env["LANG"] = "en_US.UTF-8"
-        env["LC_ALL"] = "en_US.UTF-8"
-        
-        # 设置Julia环境变量
-        env["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
-        env["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
-
-        # 预先安装和构建包
-        self._pre_install_packages(env)
+        # # 预先安装和构建包
+        # self._pre_install_packages(env)
         
         # 使用 -i 参数启动交互式会话
         process_start_time = time.time()
@@ -65,9 +55,6 @@ class ProcessManager:
             universal_newlines=True
         )
 
-        process_time = time.time() - process_start_time
-        logging.info(f"Julia进程启动耗时: {process_time:.2f}秒")
-
         self.processes[session_id] = process
         self.output_queues[session_id] = queue.Queue()
         self.error_queues[session_id] = queue.Queue()
@@ -84,24 +71,15 @@ class ProcessManager:
             args=(session_id, process.stderr, self.error_queues[session_id]),
             daemon=True
         ).start()
-
-        # 等待进程初始化
-        # time.sleep(1)
         
         # 初始化Julia环境
         init_start_time = time.time()
         logging.info("开始初始化Julia环境...")
-        
-        init_code = """
+
+        init_code = f"""
         println("正在初始化Julia环境...")
         
-        # 设置环境变量
-        ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
-        ENV["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
-        
-        # 导入必要的包 - 确保在全局作用域中
-        println("正在加载包...")
-        
+        # 尝试加载包
         try
             using PyCall
             println("PyCall 已加载")
@@ -111,7 +89,7 @@ class ProcessManager:
         
         try
             using TyPlot
-            println("TyPlot loaded")
+            println("TyPlot 已加载")
         catch e
             println("加载 TyPlot 失败: " * string(e))
         end
@@ -148,6 +126,7 @@ class ProcessManager:
                 init_completed = False
                 while not output_queue.empty():
                     line = output_queue.get_nowait()
+                    logging.info(line)
                     if "Julia环境初始化完成" in line:
                         init_completed = True
                         break
@@ -175,54 +154,35 @@ class ProcessManager:
         
         return True
         
-    def _pre_install_packages(self, env):
-        """预安装所需的包 - 使用与ts.py相同的方法"""
-        logging.info("Pre-installing packages...")
+    # def _pre_install_packages(self, env):
+    #     """预安装所需的包 - 使用与ts.py相同的方法"""
+    #     logging.info("Pre-installing packages...")
+
+    #      # 构建 PyCall
+    #     build_code = """
+    #     using Pkg
+    #     println("Building PyCall...")
+    #     Pkg.build("PyCall")
+    #     println("PyCall built successfully!")
+    #     """
         
-        # 设置Python环境
-        init_code = """
-        ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
-        println("Python environment set!")
-        """
-        
-        process = subprocess.Popen(
-            [Config.JULIA_PATH, "-e", init_code],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding='utf-8'
-        )
-        stdout, stderr = process.communicate()
-        logging.info(f"Python environment setup: {stdout}")
-        if stderr:
-            logging.error(f"Error setting Python env: {stderr}")
-        
-        # 安装包
-        packages = ["PyCall", "TyPlot", "TyBase", "TyMath"]
-        for pkg in packages:
-            self._install_single_package(pkg, env)
-        
-        # 构建 PyCall
-        build_code = """
-        using Pkg
-        println("Building PyCall...")
-        Pkg.build("PyCall")
-        println("PyCall built successfully!")
-        """
-        
-        process = subprocess.Popen(
-            [Config.JULIA_PATH, "-e", build_code],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding='utf-8'
-        )
-        stdout, stderr = process.communicate()
-        logging.info(f"PyCall build: {stdout}")
-        if stderr:
-            logging.warning(f"PyCall build warning: {stderr}")
+    #     process = subprocess.Popen(
+    #         [Config.JULIA_PATH, "-e", build_code],
+    #         env=env,
+    #         stdout=subprocess.PIPE,
+    #         stderr=subprocess.PIPE,
+    #         text=True,
+    #         encoding='utf-8'
+    #     )
+    #     stdout, stderr = process.communicate()
+    #     logging.info(f"PyCall build: {stdout}")
+    #     if stderr:
+    #         logging.warning(f"PyCall build warning: {stderr}")
+
+    #     # 安装包
+    #     packages = ["PyCall", "TyPlot", "TyBase", "TyMath"]
+    #     for pkg in packages:
+    #         self._install_single_package(pkg, env)
     
     def _install_single_package(self, pkg, env):
         """安装单个Julia包 - 与ts.py中相同的方法"""
@@ -282,21 +242,8 @@ class ProcessManager:
             while not error_queue.empty():
                 error_queue.get_nowait()
             
-            # # 发送一个清空命令到Julia进程
-            # process.stdin.write("clc\n")
             process.stdin.flush()
-            
-            # # 等待清空标记被处理
-            # timeout = time.time() + 1.0
-            # while time.time() < timeout:
-            #     try:
-            #         line = output_queue.get_nowait()
-            #         if "clc" in line:
-            #             break
-            #     except queue.Empty:
-            #         time.sleep(0.1)
-            
-            # 再次清空，确保没有残留输出
+
             while not output_queue.empty():
                 output_queue.get_nowait()
             while not error_queue.empty():

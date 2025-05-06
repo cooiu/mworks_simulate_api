@@ -78,34 +78,6 @@ class SyslabExecutor:
         if not success:
             return {'error': 'Session already exists'}
         
-        # # 会话初始化
-        # init_code = """
-        # println("Initializing Julia session...")
-        
-        # # 设置环境变量
-        # ENV["PYTHON"] = "C:/Users/Public/TongYuan/.julia/miniforge3/python.exe"
-        # ENV["JULIA_DEPOT_PATH"] = "C:/Users/Public/TongYuan/.julia"
-        
-        # # 导入包 - 确保在全局范围内导入
-        # try
-        #     using PyCall
-        #     using TyPlot
-        #     using TyBase
-        #     using TyMath
-            
-        #     println("所有包加载成功")
-        # catch e
-        #     println("Error loading packages: " * string(e))
-        # end
-        
-        # println("Julia会话初始化完成")
-        # """
-        
-        # result = SyslabExecutor._process_manager.execute_code(session_id, init_code)
-        # if result.get('error'):
-        #     SyslabExecutor._process_manager.terminate_session(session_id)
-        #     return result
-        
         return {'message': 'Session created successfully'}
 
     '''在现有进程中执行代码'''
@@ -152,32 +124,21 @@ class SyslabExecutor:
                 except Exception as e:
                     logging.warning(f"删除文件失败: {str(e)}")
             
-            # # 处理路径中的反斜杠 - 规范化路径格式
+            # 处理路径中的反斜杠 - 规范化路径格式
             fig_path_julia = fig_path.replace('\\', '/')
             
-            # # 清空任何现有输出
-            # if session_id in SyslabExecutor._process_manager.output_queues:
-            #     queue = SyslabExecutor._process_manager.output_queues[session_id]
-            #     while not queue.empty():
-            #         queue.get_nowait()
-            
-            # if session_id in SyslabExecutor._process_manager.error_queues:
-            #     queue = SyslabExecutor._process_manager.error_queues[session_id]
-            #     while not queue.empty():
-            #         queue.get_nowait()
-            
-            # 构建完整的执行代码
+            # 构建完整的执行代码，处理TyPlot可能不可用的情况
             full_code = f"""
             # 加载必要的包
             using TyPlot
 
             plt_close()
+
             # 执行用户代码
             {code}
 
             saveas(gcf(), "{fig_path_julia}")
             plt_close()
-
             """
             # Execute code in the session
             result = SyslabExecutor._process_manager.execute_code(session_id, full_code)
@@ -266,12 +227,6 @@ class SyslabExecutor:
                             logging.info(f"成功添加SVG图像，大小: {content_size} 字节")
                         else:
                             logging.warning(f"SVG文件内容可能无效: has_svg_tag={has_rect_tag}, content_size={content_size}")
-                            # 保存一份以便调试
-                            # debug_path = f"{found_svg}.debug"
-                            # with open(debug_path, 'w', encoding='utf-8') as df:
-                            #     df.write(svg_content)
-                            # logging.info(f"已保存SVG内容到调试文件: {debug_path}")
-                    
                     try:
                         os.remove(found_svg)
                         logging.info(f"已删除SVG文件: {found_svg}")

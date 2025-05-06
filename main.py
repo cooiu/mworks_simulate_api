@@ -4,6 +4,7 @@ import logging
 from utils.syslab_runner import SyslabExecutor
 
 app = Flask(__name__)
+# 更新CORS配置，允许多个源访问
 CORS(app)
 
 @app.route('/create_session', methods=['POST'])
@@ -80,4 +81,4 @@ if __name__ == '__main__':
     )
     
     # 启动服务器
-    app.run(debug=True, port=5000) 
+    app.run(host='0.0.0.0', debug=True, port=5000) 
